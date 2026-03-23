@@ -1,0 +1,8 @@
+__pycache__/
+venv/
+.env
+*.log
+*.pyc
+youtube_discovery.json
+# If you want to exclude youtube_discovery.json, keep it here.
+# But main.py uses it. Usually large JSONs are better excluded if not needed for the repo.

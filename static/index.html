@@ -1,0 +1,1404 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SentiTube — YouTube Sentiment Intelligence</title>
+    <meta name="description"
+        content="Real-time YouTube sentiment analysis powered by TextBlob NLP and YouTube Data API v3. Discover emotional patterns in video content." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&family=Syne:wght@700;800&display=swap"
+        rel="stylesheet" />
+    <style>
+        :root {
+            --c-bg: #0d0d0d;
+            --c-surface: #141414;
+            --c-panel: #1a1a1a;
+            --c-border: #2a2a2a;
+            --c-coral: #ff4d2e;
+            --c-electric: #00e5ff;
+            --c-lime: #b8ff57;
+            --c-gold: #ffd23f;
+            --c-white: #f5f5f0;
+            --c-muted: #666;
+            --c-dim: #333;
+            --pos-color: #b8ff57;
+            --neg-color: #ff4d2e;
+            --neu-color: #ffd23f;
+            --radius-sm: 4px;
+            --radius-md: 8px;
+            --radius-lg: 16px;
+        }
+
+        *,
+        *::before,
+        *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Space Grotesk', sans-serif;
+            background: var(--c-bg);
+            color: var(--c-white);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* ─── NOISE TEXTURE OVERLAY ─── */
+        body::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+            pointer-events: none;
+            z-index: 9999;
+            opacity: 0.5;
+        }
+
+        /* ─── FLOATING ORBS ─── */
+        .orb {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(120px);
+            opacity: 0.12;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .orb-1 {
+            width: 600px;
+            height: 600px;
+            background: var(--c-coral);
+            top: -200px;
+            right: -150px;
+            animation: drift 18s ease-in-out infinite alternate;
+        }
+
+        .orb-2 {
+            width: 500px;
+            height: 500px;
+            background: var(--c-electric);
+            bottom: -100px;
+            left: -100px;
+            animation: drift 22s ease-in-out infinite alternate-reverse;
+        }
+
+        .orb-3 {
+            width: 300px;
+            height: 300px;
+            background: var(--c-lime);
+            top: 40%;
+            left: 40%;
+            animation: drift 14s ease-in-out infinite alternate;
+        }
+
+        @keyframes drift {
+            from {
+                transform: translate(0, 0) scale(1);
+            }
+
+            to {
+                transform: translate(40px, 30px) scale(1.08);
+            }
+        }
+
+        /* ─── LAYOUT ─── */
+        .wrapper {
+            position: relative;
+            z-index: 1;
+            max-width: 1320px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        /* ─── TOP BAR ─── */
+        .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 20px 0;
+            border-bottom: 1px solid var(--c-border);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: rgba(13, 13, 13, 0.85);
+            backdrop-filter: blur(24px);
+        }
+
+        .topbar-inner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .brand-mark {
+            width: 38px;
+            height: 38px;
+            background: var(--c-coral);
+            border-radius: var(--radius-sm);
+            display: grid;
+            place-items: center;
+            font-size: 18px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .brand-mark::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, transparent 50%, rgba(255, 255, 255, 0.15) 100%);
+        }
+
+        .brand-name {
+            font-family: 'Syne', sans-serif;
+            font-size: 1.35rem;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            color: var(--c-white);
+        }
+
+        .brand-name span {
+            color: var(--c-coral);
+        }
+
+        .topbar-pills {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .pill {
+            font-family: 'Space Mono', monospace;
+            font-size: 0.65rem;
+            padding: 5px 12px;
+            border-radius: 100px;
+            border: 1px solid var(--c-border);
+            color: var(--c-muted);
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+
+        .pill.live {
+            border-color: var(--c-lime);
+            color: var(--c-lime);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .live-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--c-lime);
+            animation: pulse-dot 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse-dot {
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.4;
+                transform: scale(0.8);
+            }
+        }
+
+        /* ─── HERO SECTION ─── */
+        .hero {
+            padding: 80px 0 60px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 60px;
+            align-items: center;
+        }
+
+        .hero-left {}
+
+        .hero-eyebrow {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--c-electric);
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            margin-bottom: 20px;
+        }
+
+        .hero-eyebrow::before {
+            content: '';
+            display: block;
+            width: 24px;
+            height: 1px;
+            background: var(--c-electric);
+        }
+
+        .hero-title {
+            font-family: 'Syne', sans-serif;
+            font-size: clamp(2.8rem, 5vw, 4.5rem);
+            font-weight: 800;
+            line-height: 1.0;
+            letter-spacing: -0.04em;
+            margin-bottom: 24px;
+        }
+
+        .hero-title .line-accent {
+            color: var(--c-coral);
+            display: block;
+        }
+
+        .hero-title .line-stroke {
+            -webkit-text-stroke: 1.5px var(--c-white);
+            color: transparent;
+            display: block;
+        }
+
+        .hero-desc {
+            font-size: 0.95rem;
+            color: var(--c-muted);
+            line-height: 1.75;
+            max-width: 400px;
+            margin-bottom: 32px;
+        }
+
+        .hero-tags {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .hero-tag-item {
+            font-size: 0.72rem;
+            padding: 4px 10px;
+            border: 1px solid var(--c-dim);
+            border-radius: var(--radius-sm);
+            color: var(--c-muted);
+            font-family: 'Space Mono', monospace;
+        }
+
+        /* ─── RIGHT PANEL (STATS PREVIEW) ─── */
+        .hero-right {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .mini-stat {
+            background: var(--c-surface);
+            border: 1px solid var(--c-border);
+            border-radius: var(--radius-md);
+            padding: 20px;
+            position: relative;
+            overflow: hidden;
+            transition: border-color 0.2s, transform 0.2s;
+        }
+
+        .mini-stat:hover {
+            border-color: var(--c-dim);
+            transform: translateY(-2px);
+        }
+
+        .mini-stat-label {
+            font-family: 'Space Mono', monospace;
+            font-size: 0.6rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--c-muted);
+            margin-bottom: 10px;
+        }
+
+        .mini-stat-val {
+            font-family: 'Syne', sans-serif;
+            font-size: 2.4rem;
+            font-weight: 800;
+            letter-spacing: -0.04em;
+            line-height: 1;
+        }
+
+        .mini-stat-val.pos {
+            color: var(--c-lime);
+        }
+
+        .mini-stat-val.neg {
+            color: var(--c-coral);
+        }
+
+        .mini-stat-val.neu {
+            color: var(--c-gold);
+        }
+
+        .mini-stat-val.total {
+            color: var(--c-electric);
+        }
+
+        .mini-stat-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 3px;
+            border-radius: 0;
+            transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .mini-stat-bar.pos {
+            background: var(--c-lime);
+        }
+
+        .mini-stat-bar.neg {
+            background: var(--c-coral);
+        }
+
+        .mini-stat-bar.neu {
+            background: var(--c-gold);
+        }
+
+        .mini-stat-bar.total {
+            background: var(--c-electric);
+            width: 100% !important;
+        }
+
+        .mini-stat:nth-child(1) {
+            grid-column: 1 / -1;
+        }
+
+        /* ─── DIVIDER ─── */
+        .section-divider {
+            height: 1px;
+            background: var(--c-border);
+            margin: 0 0 48px;
+        }
+
+        /* ─── SEARCH SECTION ─── */
+        .search-section {
+            margin-bottom: 56px;
+        }
+
+        .search-label {
+            font-family: 'Space Mono', monospace;
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--c-muted);
+            margin-bottom: 12px;
+        }
+
+        .search-mega {
+            display: flex;
+            gap: 0;
+            border: 1px solid var(--c-border);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            background: var(--c-surface);
+        }
+
+        .search-mega:focus-within {
+            border-color: var(--c-coral);
+            box-shadow: 0 0 0 3px rgba(255, 77, 46, 0.12);
+        }
+
+        .search-mega-input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            padding: 18px 22px;
+            font-size: 1.05rem;
+            font-family: 'Space Grotesk', sans-serif;
+            color: var(--c-white);
+            min-width: 0;
+        }
+
+        .search-mega-input::placeholder {
+            color: var(--c-dim);
+        }
+
+        .search-mega-divider {
+            width: 1px;
+            background: var(--c-border);
+            align-self: stretch;
+        }
+
+        .search-mega-btn {
+            padding: 18px 32px;
+            background: var(--c-coral);
+            border: none;
+            color: white;
+            font-family: 'Syne', sans-serif;
+            font-size: 0.9rem;
+            font-weight: 800;
+            letter-spacing: -0.01em;
+            cursor: pointer;
+            transition: background 0.15s, transform 0.1s;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .search-mega-btn:hover {
+            background: #e03e22;
+        }
+
+        .search-mega-btn:active {
+            transform: scale(0.98);
+        }
+
+        .search-mega-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Controls Row */
+        .controls-strip {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            margin-top: 16px;
+            flex-wrap: wrap;
+        }
+
+        .ctrl-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .ctrl-label {
+            font-family: 'Space Mono', monospace;
+            font-size: 0.62rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--c-muted);
+            white-space: nowrap;
+        }
+
+        .ctrl-value {
+            font-family: 'Space Mono', monospace;
+            font-size: 0.8rem;
+            color: var(--c-coral);
+            min-width: 24px;
+            font-weight: 700;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 140px;
+            height: 2px;
+            background: var(--c-dim);
+            border-radius: 1px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: var(--c-coral);
+            border: 2px solid var(--c-bg);
+            cursor: pointer;
+            box-shadow: 0 0 6px rgba(255, 77, 46, 0.5);
+        }
+
+        .ctrl-sep {
+            width: 1px;
+            height: 16px;
+            background: var(--c-border);
+        }
+
+        .sort-select {
+            background: var(--c-surface);
+            border: 1px solid var(--c-border);
+            border-radius: var(--radius-sm);
+            padding: 6px 12px;
+            color: var(--c-white);
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.82rem;
+            outline: none;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+
+        .sort-select:focus {
+            border-color: var(--c-coral);
+        }
+
+        .sort-select option {
+            background: #1a1a1a;
+        }
+
+        /* ─── STATUS STRIP ─── */
+        .status-strip {
+            display: none;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 18px;
+            border-radius: var(--radius-md);
+            margin-top: 14px;
+            font-size: 0.85rem;
+            font-family: 'Space Mono', monospace;
+        }
+
+        .status-strip.loading {
+            display: flex;
+            background: rgba(0, 229, 255, 0.05);
+            border: 1px solid rgba(0, 229, 255, 0.2);
+            color: var(--c-electric);
+        }
+
+        .status-strip.error {
+            display: flex;
+            background: rgba(255, 77, 46, 0.08);
+            border: 1px solid rgba(255, 77, 46, 0.3);
+            color: var(--c-coral);
+        }
+
+        .spin-ring {
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(0, 229, 255, 0.3);
+            border-top-color: var(--c-electric);
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            flex-shrink: 0;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* ─── API WARNING ─── */
+        .api-alert {
+            display: none;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 16px 20px;
+            border: 1px solid rgba(255, 210, 63, 0.3);
+            border-left: 4px solid var(--c-gold);
+            border-radius: var(--radius-md);
+            background: rgba(255, 210, 63, 0.05);
+            margin-bottom: 32px;
+            font-size: 0.85rem;
+            color: var(--c-gold);
+        }
+
+        .api-alert a {
+            color: var(--c-gold);
+            font-weight: 600;
+        }
+
+        /* ─── RESULTS TOOLBAR ─── */
+        .results-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .results-heading {
+            font-family: 'Syne', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .results-badge {
+            font-family: 'Space Mono', monospace;
+            font-size: 0.65rem;
+            padding: 4px 10px;
+            border-radius: 100px;
+            background: var(--c-panel);
+            border: 1px solid var(--c-border);
+            color: var(--c-muted);
+            letter-spacing: 0.05em;
+        }
+
+        .filter-group {
+            display: flex;
+            gap: 6px;
+        }
+
+        .filter-btn {
+            font-family: 'Space Mono', monospace;
+            font-size: 0.62rem;
+            padding: 6px 14px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--c-border);
+            background: transparent;
+            color: var(--c-muted);
+            cursor: pointer;
+            letter-spacing: 0.07em;
+            text-transform: uppercase;
+            transition: all 0.15s;
+        }
+
+        .filter-btn:hover {
+            border-color: var(--c-dim);
+            color: var(--c-white);
+        }
+
+        .filter-btn.active-all {
+            background: var(--c-white);
+            border-color: var(--c-white);
+            color: var(--c-bg);
+        }
+
+        .filter-btn.active-pos {
+            background: var(--c-lime);
+            border-color: var(--c-lime);
+            color: var(--c-bg);
+        }
+
+        .filter-btn.active-neu {
+            background: var(--c-gold);
+            border-color: var(--c-gold);
+            color: var(--c-bg);
+        }
+
+        .filter-btn.active-neg {
+            background: var(--c-coral);
+            border-color: var(--c-coral);
+            color: white;
+        }
+
+        /* ─── RESULTS GRID ─── */
+        #results-section {
+            display: none;
+        }
+
+        .results-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 16px;
+        }
+
+        /* ─── VIDEO CARD ─── */
+        .video-card {
+            background: var(--c-surface);
+            border: 1px solid var(--c-border);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            transition: transform 0.2s, border-color 0.2s;
+            cursor: pointer;
+            animation: fadeUp 0.4s ease both;
+            display: flex;
+            flex-direction: column;
+        }
+
+        @keyframes fadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(16px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .video-card:hover {
+            transform: translateY(-3px);
+            border-color: var(--c-dim);
+        }
+
+        .card-thumb-wrap {
+            position: relative;
+            width: 100%;
+            padding-top: 56.25%;
+            /* 16:9 */
+            background: var(--c-panel);
+            overflow: hidden;
+        }
+
+        .card-thumb {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            transition: transform 0.4s ease;
+        }
+
+        .video-card:hover .card-thumb {
+            transform: scale(1.03);
+        }
+
+        .card-sentiment-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+        }
+
+        .card-sentiment-badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.6rem;
+            padding: 4px 10px;
+            border-radius: 100px;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            backdrop-filter: blur(8px);
+        }
+
+        .card-sentiment-badge.Positive {
+            background: rgba(184, 255, 87, 0.15);
+            color: var(--c-lime);
+            border: 1px solid rgba(184, 255, 87, 0.3);
+        }
+
+        .card-sentiment-badge.Negative {
+            background: rgba(255, 77, 46, 0.15);
+            color: var(--c-coral);
+            border: 1px solid rgba(255, 77, 46, 0.3);
+        }
+
+        .card-sentiment-badge.Neutral {
+            background: rgba(255, 210, 63, 0.15);
+            color: var(--c-gold);
+            border: 1px solid rgba(255, 210, 63, 0.3);
+        }
+
+        .card-content {
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+        }
+
+        .card-channel-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .card-channel {
+            font-size: 0.72rem;
+            color: var(--c-muted);
+            font-family: 'Space Mono', monospace;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 65%;
+        }
+
+        .card-date {
+            font-size: 0.68rem;
+            color: var(--c-dim);
+            font-family: 'Space Mono', monospace;
+        }
+
+        .card-title {
+            font-size: 0.92rem;
+            font-weight: 600;
+            line-height: 1.4;
+            margin-bottom: 8px;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            color: var(--c-white);
+            letter-spacing: -0.01em;
+        }
+
+        .card-desc {
+            font-size: 0.78rem;
+            color: var(--c-muted);
+            line-height: 1.5;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            flex: 1;
+            margin-bottom: 12px;
+        }
+
+        .card-footer-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-top: 1px solid var(--c-border);
+            padding-top: 12px;
+            margin-top: auto;
+            gap: 8px;
+        }
+
+        .polarity-chip {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .polarity-label {
+            font-family: 'Space Mono', monospace;
+            font-size: 0.6rem;
+            color: var(--c-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .polarity-val {
+            font-family: 'Space Mono', monospace;
+            font-size: 0.72rem;
+            font-weight: 700;
+        }
+
+        .watch-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.62rem;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: var(--c-coral);
+            text-decoration: none;
+            padding: 5px 12px;
+            border: 1px solid rgba(255, 77, 46, 0.3);
+            border-radius: var(--radius-sm);
+            transition: all 0.15s;
+        }
+
+        .watch-link:hover {
+            background: var(--c-coral);
+            border-color: var(--c-coral);
+            color: white;
+        }
+
+        /* ─── NO RESULTS ─── */
+        .no-results {
+            display: none;
+            text-align: center;
+            padding: 80px 24px;
+        }
+
+        .no-results-icon {
+            font-size: 3rem;
+            margin-bottom: 16px;
+            opacity: 0.3;
+        }
+
+        .no-results h3 {
+            font-family: 'Syne', sans-serif;
+            font-size: 1.2rem;
+            font-weight: 800;
+            color: var(--c-muted);
+            margin-bottom: 6px;
+        }
+
+        .no-results p {
+            font-size: 0.82rem;
+            color: var(--c-dim);
+        }
+
+        /* ─── FOOTER ─── */
+        .site-footer {
+            border-top: 1px solid var(--c-border);
+            padding: 28px 0;
+            margin-top: 80px;
+        }
+
+        .footer-inner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .footer-left {
+            font-family: 'Space Mono', monospace;
+            font-size: 0.65rem;
+            color: var(--c-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .footer-tech {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .tech-pip {
+            font-family: 'Space Mono', monospace;
+            font-size: 0.62rem;
+            color: var(--c-muted);
+            padding: 3px 10px;
+            border: 1px solid var(--c-border);
+            border-radius: 100px;
+        }
+
+        /* ─── RESPONSIVE ─── */
+        @media (max-width: 768px) {
+            .hero {
+                grid-template-columns: 1fr;
+                gap: 40px;
+            }
+
+            .hero-right {
+                display: none;
+            }
+
+            .topbar-pills .pill:not(.live) {
+                display: none;
+            }
+
+            .results-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .search-mega {
+                flex-direction: column;
+            }
+
+            .search-mega-btn {
+                justify-content: center;
+            }
+
+            .footer-inner {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .controls-strip {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .ctrl-sep {
+                display: none;
+            }
+        }
+
+        /* ─── SCROLLBAR ─── */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--c-bg);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--c-dim);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--c-muted);
+        }
+
+        /* ─── SELECTION ─── */
+        ::selection {
+            background: rgba(255, 77, 46, 0.3);
+            color: var(--c-white);
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Floating orbs -->
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+
+    <!-- ── TOP BAR ── -->
+    <header>
+        <div class="wrapper">
+            <div class="topbar-inner">
+                <div class="brand">
+                    <div class="brand-mark">📡</div>
+                    <div>
+                        <div class="brand-name">Senti<span>Tube</span></div>
+                    </div>
+                </div>
+                <div class="topbar-pills">
+                    <div class="pill live" id="status-pill">
+                        <div class="live-dot"></div> ONLINE
+                    </div>
+                    <div class="pill">TextBlob NLP</div>
+                    <div class="pill">YT Data API v3</div>
+                    <div class="pill">AD Lab · Exp 6</div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <div class="wrapper">
+
+            <!-- ── HERO ── -->
+            <section class="hero">
+                <div class="hero-left">
+                    <div class="hero-eyebrow">Sentiment Intelligence Engine</div>
+                    <h1 class="hero-title">
+                        <span>Decode</span>
+                        <span class="line-accent">YouTube's</span>
+                        <span class="line-stroke">Mood.</span>
+                    </h1>
+                    <p class="hero-desc">
+                        Enter any keyword and watch the algorithm dissect YouTube's emotional landscape — surfacing what
+                        audiences truly feel about any topic in real-time.
+                    </p>
+                    <div class="hero-tags">
+                        <span class="hero-tag-item">Polarity Analysis</span>
+                        <span class="hero-tag-item">Subjectivity Score</span>
+                        <span class="hero-tag-item">Real-Time Data</span>
+                        <span class="hero-tag-item">NLP Pipeline</span>
+                    </div>
+                </div>
+                <div class="hero-right" id="hero-stats">
+                    <div class="mini-stat">
+                        <div class="mini-stat-label">Total Analyzed</div>
+                        <div class="mini-stat-val total" id="stat-total">—</div>
+                        <div class="mini-stat-bar total"></div>
+                    </div>
+                    <div class="mini-stat">
+                        <div class="mini-stat-label">Positive</div>
+                        <div class="mini-stat-val pos" id="stat-pos">—</div>
+                        <div class="mini-stat-bar pos" id="bar-pos" style="width:0%"></div>
+                    </div>
+                    <div class="mini-stat">
+                        <div class="mini-stat-label">Neutral</div>
+                        <div class="mini-stat-val neu" id="stat-neu">—</div>
+                        <div class="mini-stat-bar neu" id="bar-neu" style="width:0%"></div>
+                    </div>
+                    <div class="mini-stat">
+                        <div class="mini-stat-label">Negative</div>
+                        <div class="mini-stat-val neg" id="stat-neg">—</div>
+                        <div class="mini-stat-bar neg" id="bar-neg" style="width:0%"></div>
+                    </div>
+                </div>
+            </section>
+
+            <div class="section-divider"></div>
+
+            <!-- ── API ALERT ── -->
+            <div class="api-alert" id="api-warning">
+                <span style="font-size:1.1rem">⚠</span>
+                <div>
+                    <strong>YouTube API Key not configured.</strong> Add your <code>YOUTUBE_API_KEY</code> to the
+                    <code>.env</code> file and restart.
+                    <br /><a href="https://console.cloud.google.com/" target="_blank" rel="noopener">Get key from Google
+                        Cloud Console →</a>
+                </div>
+            </div>
+
+            <!-- ── SEARCH SECTION ── -->
+            <section class="search-section">
+                <div class="search-label">Analyze YouTube Sentiment</div>
+
+                <div class="search-mega">
+                    <input type="text" class="search-mega-input" id="keyword-input"
+                        placeholder="Try 'artificial intelligence', 'climate change', 'crypto'..." autocomplete="off"
+                        spellcheck="false" />
+                    <div class="search-mega-divider"></div>
+                    <button class="search-mega-btn" id="search-btn" onclick="searchVideos()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="3">
+                            <circle cx="11" cy="11" r="8" />
+                            <path d="m21 21-4.35-4.35" />
+                        </svg>
+                        RUN ANALYSIS
+                    </button>
+                </div>
+
+                <div class="controls-strip">
+                    <div class="ctrl-group">
+                        <span class="ctrl-label">Results</span>
+                        <input type="range" id="count-slider" min="1" max="50" value="10" />
+                        <span class="ctrl-value" id="count-display">10</span>
+                    </div>
+                    <div class="ctrl-sep"></div>
+                    <div class="ctrl-group">
+                        <span class="ctrl-label">Sort by</span>
+                        <select class="sort-select" id="sort-select">
+                            <option value="relevance">Relevance</option>
+                            <option value="date">Latest</option>
+                            <option value="viewCount">View Count</option>
+                            <option value="rating">Rating</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Status strip -->
+                <div class="status-strip" id="status-bar">
+                    <div class="spin-ring" id="status-spinner"></div>
+                    <span id="status-text">Fetching...</span>
+                </div>
+            </section>
+
+            <!-- ── RESULTS ── -->
+            <section id="results-section">
+                <div class="results-toolbar">
+                    <div class="results-heading">
+                        Analysis Results
+                        <span class="results-badge" id="results-count">0 videos</span>
+                    </div>
+                    <div class="filter-group">
+                        <button class="filter-btn active-all" id="tab-all"
+                            onclick="filterResults('all', this, 'active-all')">All</button>
+                        <button class="filter-btn" id="tab-pos"
+                            onclick="filterResults('Positive', this, 'active-pos')">Positive</button>
+                        <button class="filter-btn" id="tab-neu"
+                            onclick="filterResults('Neutral', this, 'active-neu')">Neutral</button>
+                        <button class="filter-btn" id="tab-neg"
+                            onclick="filterResults('Negative', this, 'active-neg')">Negative</button>
+                    </div>
+                </div>
+
+                <div class="no-results" id="no-results">
+                    <div class="no-results-icon">◎</div>
+                    <h3>No matches for this filter</h3>
+                    <p>Switch to a different sentiment category above</p>
+                </div>
+
+                <div class="results-grid" id="results-grid"></div>
+            </section>
+
+        </div>
+    </main>
+
+    <!-- ── FOOTER ── -->
+    <footer class="site-footer">
+        <div class="wrapper">
+            <div class="footer-inner">
+                <div class="footer-left">© 2025 SentiTube · AD Lab Experiment 6</div>
+                <div class="footer-tech">
+                    <span class="tech-pip">FastAPI</span>
+                    <span class="tech-pip">TextBlob NLP</span>
+                    <span class="tech-pip">YouTube Data API v3</span>
+                    <span class="tech-pip">Python 3.x</span>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        let allResults = [];
+        let currentFilter = 'all';
+        let currentActiveClass = 'active-all';
+
+        // ── Slider ──
+        const slider = document.getElementById('count-slider');
+        const countDisplay = document.getElementById('count-display');
+        slider.addEventListener('input', () => {
+            countDisplay.textContent = slider.value;
+        });
+
+        // ── Enter to search ──
+        document.getElementById('keyword-input').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') searchVideos();
+        });
+
+        // ── Health check ──
+        async function checkHealth() {
+            try {
+                const res = await fetch('/health');
+                const data = await res.json();
+                if (!data.api_configured) {
+                    const w = document.getElementById('api-warning');
+                    w.style.display = 'flex';
+                }
+            } catch (e) { }
+        }
+        checkHealth();
+
+        // ── Search ──
+        async function searchVideos() {
+            const keyword = document.getElementById('keyword-input').value.trim();
+            if (!keyword) {
+                document.getElementById('keyword-input').focus();
+                document.querySelector('.search-mega').style.borderColor = 'var(--c-coral)';
+                setTimeout(() => document.querySelector('.search-mega').style.borderColor = '', 1200);
+                return;
+            }
+
+            const count = parseInt(slider.value);
+            const sortBy = document.getElementById('sort-select').value;
+            const btn = document.getElementById('search-btn');
+
+            btn.disabled = true;
+            btn.innerHTML = `<span class="spin-ring" style="border-top-color:white;border-color:rgba(255,255,255,0.3);width:12px;height:12px;display:inline-block"></span> ANALYZING...`;
+
+            showStatus('loading', `Querying YouTube for "${keyword}"...`);
+            document.getElementById('results-section').style.display = 'none';
+
+            try {
+                const response = await fetch('/fetch_videos/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ keyword, count, sort_by: sortBy })
+                });
+                const data = await response.json();
+
+                if (!response.ok) throw new Error(data.detail || 'Request failed');
+
+                allResults = data;
+                hideStatus();
+                renderStats(data);
+                filterResults('all', document.getElementById('tab-all'), 'active-all');
+
+            } catch (err) {
+                showStatus('error', err.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg> RUN ANALYSIS`;
+            }
+        }
+
+        function showStatus(type, text) {
+            const bar = document.getElementById('status-bar');
+            const spinner = document.getElementById('status-spinner');
+            bar.className = 'status-strip ' + type;
+            bar.style.display = 'flex';
+            spinner.style.display = type === 'loading' ? 'block' : 'none';
+            document.getElementById('status-text').textContent = text;
+        }
+
+        function hideStatus() {
+            document.getElementById('status-bar').style.display = 'none';
+        }
+
+        function renderStats(data) {
+            const total = data.length;
+            const pos = data.filter(v => v.sentiment === 'Positive').length;
+            const neg = data.filter(v => v.sentiment === 'Negative').length;
+            const neu = data.filter(v => v.sentiment === 'Neutral').length;
+
+            document.getElementById('stat-total').textContent = total;
+            document.getElementById('stat-pos').textContent = pos;
+            document.getElementById('stat-neg').textContent = neg;
+            document.getElementById('stat-neu').textContent = neu;
+
+            setTimeout(() => {
+                if (total > 0) {
+                    document.getElementById('bar-pos').style.width = `${(pos / total) * 100}%`;
+                    document.getElementById('bar-neg').style.width = `${(neg / total) * 100}%`;
+                    document.getElementById('bar-neu').style.width = `${(neu / total) * 100}%`;
+                }
+            }, 100);
+        }
+
+        function filterResults(filter, tabEl, activeClass) {
+            currentFilter = filter;
+
+            // Reset all tabs
+            document.querySelectorAll('.filter-btn').forEach(t => {
+                t.className = 'filter-btn';
+            });
+            if (tabEl) tabEl.classList.add(activeClass || 'active-all');
+
+            const filtered = filter === 'all' ? allResults : allResults.filter(v => v.sentiment === filter);
+
+            document.getElementById('results-count').textContent =
+                `${filtered.length} video${filtered.length !== 1 ? 's' : ''}`;
+            document.getElementById('results-section').style.display = 'block';
+
+            const grid = document.getElementById('results-grid');
+            const noResults = document.getElementById('no-results');
+
+            if (filtered.length === 0) {
+                grid.innerHTML = '';
+                noResults.style.display = 'block';
+            } else {
+                noResults.style.display = 'none';
+                grid.innerHTML = filtered.map((v, i) => renderCard(v, i)).join('');
+            }
+        }
+
+        function renderCard(v, index) {
+            const date = new Date(v.published_at).toLocaleDateString('en-US', {
+                year: 'numeric', month: 'short', day: 'numeric'
+            });
+            const polarity = v.polarity;
+            const polarityPct = Math.round(((polarity + 1) / 2) * 100);
+            const polarityColor = polarity > 0.1 ? 'var(--c-lime)' : polarity < -0.1 ? 'var(--c-coral)' : 'var(--c-gold)';
+            const barColor = polarity > 0.1 ? 'var(--c-lime)' : polarity < -0.1 ? 'var(--c-coral)' : 'var(--c-gold)';
+            const desc = v.description || 'No description available.';
+            const thumb = v.thumbnail || '';
+            const sentIcon = v.sentiment === 'Positive' ? '▲' : v.sentiment === 'Negative' ? '▼' : '●';
+
+            return `
+        <div class="video-card" style="animation-delay:${index * 0.04}s">
+            <div class="card-thumb-wrap">
+                ${thumb ? `<img class="card-thumb" src="${esc(thumb)}" alt="" loading="lazy" onerror="this.parentElement.style.background='#1a1a1a'"/>` : ''}
+                <div class="card-sentiment-bar" style="background:${barColor}"></div>
+                <div class="card-sentiment-badge ${v.sentiment}">${sentIcon} ${v.sentiment}</div>
+            </div>
+            <div class="card-content">
+                <div class="card-channel-row">
+                    <span class="card-channel">${esc(v.channel)}</span>
+                    <span class="card-date">${date}</span>
+                </div>
+                <div class="card-title">${esc(v.title)}</div>
+                <div class="card-desc">${esc(desc)}</div>
+                <div class="card-footer-row">
+                    <div class="polarity-chip">
+                        <span class="polarity-label">Polarity</span>
+                        <span class="polarity-val" style="color:${polarityColor}">${polarity > 0 ? '+' : ''}${polarity}</span>
+                    </div>
+                    <a class="watch-link" href="https://youtube.com/watch?v=${v.video_id}" target="_blank" rel="noopener">
+                        ▶ Watch
+                    </a>
+                </div>
+            </div>
+        </div>`;
+        }
+
+        function esc(str) {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+    </script>
+
+</body>
+
+</html>
